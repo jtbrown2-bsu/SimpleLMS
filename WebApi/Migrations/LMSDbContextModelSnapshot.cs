@@ -29,7 +29,7 @@ namespace WebApi.Migrations
                     b.Property<int>("Grade")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("ModuleId")
+                    b.Property<int?>("ModuleId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
@@ -64,7 +64,7 @@ namespace WebApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("CourseId")
+                    b.Property<int?>("CourseId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
@@ -82,9 +82,7 @@ namespace WebApi.Migrations
                 {
                     b.HasOne("WebApi.Models.Module", "Module")
                         .WithMany("Assignments")
-                        .HasForeignKey("ModuleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ModuleId");
 
                     b.Navigation("Module");
                 });
@@ -93,9 +91,7 @@ namespace WebApi.Migrations
                 {
                     b.HasOne("WebApi.Models.Course", "Course")
                         .WithMany("Modules")
-                        .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("CourseId");
 
                     b.Navigation("Course");
                 });

@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿
+using System.Text.Json.Serialization;
 
 namespace WebApi.Models
 {
@@ -6,10 +7,8 @@ namespace WebApi.Models
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
-        public List<Assignment>? Assignments { get; set; }
+        public List<Assignment>? Assignments { get; set; } = new List<Assignment>();
         [JsonIgnore]
-        public virtual int CourseId { get; set; }
-        [JsonIgnore]
-        public virtual Course Course { get; set; }
+        public Course? Course { get; set; }
     }
 }

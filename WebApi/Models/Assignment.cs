@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿
+using System.Text.Json.Serialization;
 
 namespace WebApi.Models
 {
@@ -9,8 +10,6 @@ namespace WebApi.Models
         public int Grade { get; set; }
         public DateTime DueDate { get; set; }
         [JsonIgnore]
-        public virtual int ModuleId { get; set; }
-        [JsonIgnore]
-        public virtual Module Module { get; set; }
+        public Module? Module { get; set; }
     }
 }

@@ -16,18 +16,5 @@ namespace WebApi.Context
         {
             
         }
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-
-            modelBuilder.Entity<Assignment>()
-            .HasOne(a => a.Module)
-            .WithMany(i => i.Assignments);
-
-            modelBuilder.Entity<Module>()
-            .HasOne(a => a.Course)
-            .WithMany(i => i.Modules);
-
-        }
     }
 }

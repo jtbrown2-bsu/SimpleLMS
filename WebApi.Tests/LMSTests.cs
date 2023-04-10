@@ -13,52 +13,44 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using System.Text;
+using System.Data.Common;
 
 namespace WebApi.Tests
 {
-    public class AssignmentControllerTests : IAsyncLifetime
+    public class LMSTests : IClassFixture<CustomWebApplicationFactory<Program>>, IAsyncLifetime
     {
-        IHost? host;
+        private HttpClient _client;
+        private readonly CustomWebApplicationFactory<Program>
+            _factory;
 
-        public Task DisposeAsync()
+        public LMSTests(CustomWebApplicationFactory<Program> factory)
         {
-            var db = host.Services.GetService<LMSDbContext>();
-            db.Database.EnsureDeleted();
-            return Task.CompletedTask;
+            _client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+            _factory = factory;
+        }
+
+        public async Task DisposeAsync()
+        {
+            using var scope = _factory.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LMSDbContext>();
+            await dbContext.Database.EnsureDeletedAsync();
+            await dbContext.Database.CloseConnectionAsync();
+            var connection = scope.ServiceProvider.GetRequiredService<DbConnection>();
+            await connection.CloseAsync();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
         }
 
         public async Task InitializeAsync()
         {
-            host = await new HostBuilder()
-            .ConfigureWebHost(webBuilder =>
-            {
-                webBuilder
-                    .UseTestServer()
-                    .ConfigureTestServices(services =>
-                    {
-                        var assignmentAssembly = typeof(AssignmentController).Assembly;
-                        var courseAssembly = typeof(CourseController).Assembly;
-                        var moduleAssembly = typeof(ModuleController).Assembly;
-                        services.AddControllers().AddApplicationPart(assignmentAssembly).AddApplicationPart(courseAssembly).AddApplicationPart(moduleAssembly);
-                        services.AddScoped<IAssignmentRepository, AssignmentRepository>();
-                        services.AddScoped<IModuleRepository, ModuleRepository>();
-                        services.AddScoped<ICourseRepository, CourseRepository>();
-                        var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = ":memory:" }.ToString());
-                        services.AddDbContext<LMSDbContext>(options => options.UseSqlite(connection));
-                    })
-                    .Configure(app =>
-                    {
-                        using (var serviceScope = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>()
-                        .CreateScope())
-                        {
-                            var dbContext = serviceScope.ServiceProvider.GetService<LMSDbContext>();
-                            dbContext.Database.OpenConnection();
-                            dbContext.Database.EnsureDeleted();
-                            dbContext.Database.Migrate();
-                        }
-                    }).UseEnvironment("Development");
-            })
-               .StartAsync();
+            using var scope = _factory.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LMSDbContext>();
+            await dbContext.Database.OpenConnectionAsync();
+            await dbContext.Database.EnsureDeletedAsync();
+            await dbContext.Database.MigrateAsync();
         }
 
         [Fact]
@@ -70,9 +62,9 @@ namespace WebApi.Tests
                 Modules = new List<Models.Module>()
             };
             var stringContent = new StringContent(JsonConvert.SerializeObject(course), Encoding.UTF8, "application/json");
-            var response = await host.GetTestClient().PostAsync("/Course", stringContent);
+            var response = await _client.PostAsync("/Course", stringContent);
             Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
-            response = await host.GetTestClient().GetAsync("/Course/1");
+            response = await _client.GetAsync("/Course/1");
             var courseResponse = JsonConvert.DeserializeObject<Course>(await response.Content.ReadAsStringAsync());
             Assert.Equal(course.Name, courseResponse.Name);
         }
@@ -98,9 +90,9 @@ namespace WebApi.Tests
                 }
             };
             var stringContent = new StringContent(JsonConvert.SerializeObject(course), Encoding.UTF8, "application/json");
-            var response = await host.GetTestClient().PostAsync("/Course", stringContent);
+            var response = await _client.PostAsync("/Course", stringContent);
             Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
-            response = await host.GetTestClient().GetAsync("/Course/1");
+            response = await _client.GetAsync("/Course/1");
             var courseResponse = JsonConvert.DeserializeObject<Course>(await response.Content.ReadAsStringAsync());
             Assert.Equal(2, courseResponse.Modules.Count);
             Assert.Equal("TestModule", courseResponse.Modules[0].Name);
@@ -140,29 +132,31 @@ namespace WebApi.Tests
                     {
                         new Models.Module
                         {
-                            Name = "TestModule",
+                            Name = "TestModule3",
                             Assignments = new List<Assignment>()
                         }
                     }
                 },
             };
             var stringContent1 = new StringContent(JsonConvert.SerializeObject(courses[0]), Encoding.UTF8, "application/json");
-            var response = await host.GetTestClient().PostAsync("/Course", stringContent1);
+            var response = await _client.PostAsync("/Course", stringContent1);
 
             var stringContent2 = new StringContent(JsonConvert.SerializeObject(courses[1]), Encoding.UTF8, "application/json");
-            var response2 = await host.GetTestClient().PostAsync("/Course", stringContent1);
+            var response2 = await _client.PostAsync("/Course", stringContent2);
 
             var stringContent3 = new StringContent(JsonConvert.SerializeObject(courses[2]), Encoding.UTF8, "application/json");
-            var response3 = await host.GetTestClient().PostAsync("/Course", stringContent1);
+            var response3 = await _client.PostAsync("/Course", stringContent3);
 
-            response = await host.GetTestClient().GetAsync("/Course");
-            var courseResponse = JsonConvert.DeserializeObject<List<Course>>(await response.Content.ReadAsStringAsync());
+            response = await _client.GetAsync("/Course");
+            var courseResponse = JsonConvert.DeserializeObject<List<Course>>(await response.Content.ReadAsStringAsync()).ToList();
             Assert.Equal("Test", courseResponse[0].Name);
             Assert.Equal("Test2", courseResponse[1].Name);
             Assert.Equal("Test3", courseResponse[2].Name);
             Assert.Equal(2, courseResponse[0].Modules.Count);
+            Assert.Empty(courseResponse[1].Modules);
             Assert.Single(courseResponse[2].Modules);
         }
+
         [Fact]
         public async Task CreateThreeAssignments()
         {
@@ -181,28 +175,29 @@ namespace WebApi.Tests
                 },
                 new Assignment
                 {
-                    Name = "Test4",
+                    Name = "Test3",
                     Grade = 75,
                     DueDate = new DateTime()
                 }
             };
             var stringContent1 = new StringContent(JsonConvert.SerializeObject(assignments[0]), Encoding.UTF8, "application/json");
-            var response = await host.GetTestClient().PostAsync("/Assignment", stringContent1);
+            var response = await _client.PostAsync("/Assignment", stringContent1);
 
             var stringContent2 = new StringContent(JsonConvert.SerializeObject(assignments[1]), Encoding.UTF8, "application/json");
-            var response2 = await host.GetTestClient().PostAsync("/Assignment", stringContent1);
+            var response2 = await _client.PostAsync("/Assignment", stringContent2);
 
             var stringContent3 = new StringContent(JsonConvert.SerializeObject(assignments[2]), Encoding.UTF8, "application/json");
-            var response3 = await host.GetTestClient().PostAsync("/Assignment", stringContent1);
+            var response3 = await _client.PostAsync("/Assignment", stringContent3);
 
-            response = await host.GetTestClient().DeleteAsync("/Assignment/1");
-            response = await host.GetTestClient().GetAsync("/Assignment");
-            var assignmentResponse = JsonConvert.DeserializeObject<List<Assignment>>(await response.Content.ReadAsStringAsync());
+            response = await _client.DeleteAsync("/Assignment/1");
+            response = await _client.GetAsync("/Assignment");
+            var assignmentResponse = JsonConvert.DeserializeObject<IEnumerable<Assignment>>(await response.Content.ReadAsStringAsync()).ToList();
             Assert.Equal("Test2", assignmentResponse[0].Name);
             Assert.Equal("Test3", assignmentResponse[1].Name);
             Assert.Equal(2, assignmentResponse.Count);
         }
 
+        [Fact]
         public async Task UpdateAssignmentThenGet()
         {
             var assignment =
@@ -213,22 +208,24 @@ namespace WebApi.Tests
                     DueDate = new DateTime()
                 };
             var stringContent1 = new StringContent(JsonConvert.SerializeObject(assignment), Encoding.UTF8, "application/json");
-            var response = await host.GetTestClient().PostAsync("/Assignment", stringContent1);
+            var response = await _client.PostAsync("/Assignment", stringContent1);
             assignment.Name = "Updated";
             var stringContent2 = new StringContent(JsonConvert.SerializeObject(assignment), Encoding.UTF8, "application/json");
-            var response2 = await host.GetTestClient().PutAsync("/Assignment/1", stringContent1);
+            var response2 = await _client.PutAsync("/Assignment/1", stringContent2);
 
-            response = await host.GetTestClient().GetAsync("/Assignment/1");
+            response = await _client.GetAsync("/Assignment/1");
             var assignmentResponse = JsonConvert.DeserializeObject<Assignment>(await response.Content.ReadAsStringAsync());
             Assert.Equal("Updated", assignmentResponse.Name);
         }
 
+        [Fact]
         public async Task GetWrongIdReturnsNotFound()
         {
-            var response = await host.GetTestClient().GetAsync("/Assignment/8");
+            var response = await _client.GetAsync("/Assignment/8");
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
 
+        [Fact]
         public async Task UpdateWrongIdReturnsNotFound()
         {
             var assignment =
@@ -239,10 +236,10 @@ namespace WebApi.Tests
                     DueDate = new DateTime()
                 };
             var stringContent1 = new StringContent(JsonConvert.SerializeObject(assignment), Encoding.UTF8, "application/json");
-            var response = await host.GetTestClient().PostAsync("/Assignment", stringContent1);
+            var response = await _client.PostAsync("/Assignment", stringContent1);
             assignment.Name = "Updated"; 
             var stringContent2 = new StringContent(JsonConvert.SerializeObject(assignment), Encoding.UTF8, "application/json");
-            response = await host.GetTestClient().PutAsync("/Assignment/7", stringContent2);
+            response = await _client.PutAsync("/Assignment/7", stringContent2);
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
     }
