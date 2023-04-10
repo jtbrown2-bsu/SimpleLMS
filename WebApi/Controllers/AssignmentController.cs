@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using WebApi.Models;
+using WebApi.Repository;
 using WebApi.RequestModels;
 
 namespace WebApi.Controllers
@@ -8,92 +9,62 @@ namespace WebApi.Controllers
     [Route("[controller]")]
     public class AssignmentController : ControllerBase
     {
-        private List<Assignment> _assignments = new List<Assignment>
+        private readonly IAssignmentRepository _repository;
+
+        public AssignmentController(IAssignmentRepository repository)
         {
-            new Assignment
-            {
-                Id=0,
-                Name="Test 1",
-                Grade=100,
-                DueDate= new DateTime(2023, 03, 25),
-            },
-            new Assignment
-            {
-                Id=1,
-                Name="Test 2",
-                Grade=95,
-                DueDate= new DateTime(2023, 03, 26),
-            },
-            new Assignment
-            {
-                Id=2,
-                Name="Test 3",
-                Grade=92,
-                DueDate= new DateTime(2023, 03, 27),
-            },
-        };
+            _repository = repository;
+        }
 
         [HttpGet]
-        public List<Assignment> Get()
+        public ActionResult<List<Assignment>> Get()
         {
-            return _assignments;
+            return Ok(_repository.Get());
         }
 
         [HttpGet("{id}")]
         public ActionResult<Assignment> Get(int id)
         {
-            if (id >= 0 && id < _assignments.Count())
+            var assignment = _repository.Get(id);
+            if(assignment == null)
             {
-                return _assignments[id];
+                return NotFound();
             }
-            return NotFound();
+            return Ok(assignment);
         }
 
-        //This doesn't actually do anything because we are not expected to have data persistence.
         [HttpPut("{id}")]
         public ActionResult Update(int id, AssignmentRequest request)
         {
-            if (id < 0 || id >= _assignments.Count())
+            try
+            {
+                _repository.Update(id, request);
+                return Ok();
+            } catch
             {
                 return NotFound();
             }
-            var assignment = new Assignment
-            {
-                Id = id,
-                Name = request.Name,
-                Grade = request.Grade,
-                DueDate = request.DueDate
-            };
-            _assignments[id] = assignment;
-            return Ok();
         }
 
-        //This doesn't actually do anything because we are not expected to have data persistence.
         [HttpPost]
         public ActionResult Create(AssignmentRequest request)
         {
-            var assignment = new Assignment
-            {
-                Id = _assignments.Count(),
-                Name = request.Name,
-                Grade = request.Grade,
-                DueDate = request.DueDate
-            };
-            _assignments.Add(assignment);
+            _repository.Add(request);
             return Ok();
         }
 
-        //This doesn't actually do anything because we are not expected to have data persistence.
         [HttpDelete("{id}")]
         public ActionResult Delete(int id)
         {
-            if (id < 0 || id >= _assignments.Count())
+            try
+            {
+                _repository.Delete(id);
+                return Ok();
+            }
+            catch
             {
                 return NotFound();
             }
-            
-            _assignments.RemoveAt(id);
-            return Ok();
         }
     }
 }

@@ -1,4 +1,6 @@
-﻿namespace WebApi.Models
+﻿using System.Text.Json.Serialization;
+
+namespace WebApi.Models
 {
     public class Assignment
     {
@@ -6,5 +8,9 @@
         public string Name { get; set; } = string.Empty;
         public int Grade { get; set; }
         public DateTime DueDate { get; set; }
+        [JsonIgnore]
+        public virtual int ModuleId { get; set; }
+        [JsonIgnore]
+        public virtual Module Module { get; set; }
     }
 }
